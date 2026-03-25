@@ -2,41 +2,39 @@ import streamlit as st
 import pandas as pd
 from openai import OpenAI
 
-# ====== CONFIG GROQ ======
+# ====== GROQ ======
 client = OpenAI(
     api_key=st.secrets["GROQ_API_KEY"],
     base_url="https://api.groq.com/openai/v1"
 )
 
-st.title("📊 Tóm tắt ý nghĩa 14 Cluster (Chủ đề)")
+st.title("📊 Tóm tắt 14 Cluster (Survey)")
 
-# ====== UPLOAD FILE ======
 uploaded_file = st.file_uploader("📂 Upload file Excel", type=["xlsx"])
 
 if uploaded_file:
     df = pd.read_excel(uploaded_file)
 
-    # ====== FIX KIỂU DỮ LIỆU CLUSTER ======
-    df["Cluster"] = pd.to_numeric(df["Cluster"], errors="coerce")
+    # ====== FIX CLUSTER (QUAN TRỌNG NHẤT) ======
+    df["Cluster_num"] = df["Cluster"].str.extract(r'(\d+)').astype(int)
 
     st.write("📌 Dữ liệu:")
     st.dataframe(df.head())
 
-    # ====== CHỌN CỘT NỘI DUNG ======
-    text_column = st.selectbox("Chọn cột nội dung khảo sát", df.columns)
+    text_column = "Content"  # file của bạn là cột này
 
     if st.button("🚀 Phân tích"):
 
-        with st.spinner("Đang tóm tắt từng cluster..."):
+        with st.spinner("Đang tóm tắt..."):
 
             results = []
 
-            # ====== CHẠY ĐÚNG THỨ TỰ 1 → 14 ======
+            # ====== CHẠY 1 → 14 ======
             for cluster_id in range(1, 15):
 
                 st.write(f"### 🔹 Cluster {cluster_id}")
 
-                cluster_data = df[df["Cluster"] == cluster_id]
+                cluster_data = df[df["Cluster_num"] == cluster_id]
 
                 if cluster_data.empty:
                     st.write("⚠️ Không có dữ liệu")
@@ -46,16 +44,15 @@ if uploaded_file:
                     })
                     continue
 
-                texts = cluster_data[text_column].astype(str).tolist()
+                texts = cluster_data[text_column].dropna().astype(str).tolist()
 
-                # giảm dữ liệu tránh rate limit
                 sample = texts[:3]
 
                 prompt = f"""
-                Đây là các câu trả lời thuộc Cluster {cluster_id}:
+                Đây là các câu trả lời survey thuộc Cluster {cluster_id}:
                 {sample}
 
-                Hãy tóm tắt ý nghĩa nội dung của cluster này.
+                Hãy tóm tắt ý nghĩa chủ đề chính của cluster này.
                 - 1-2 câu
                 - Ngắn gọn
                 - Rõ ràng
@@ -71,7 +68,7 @@ if uploaded_file:
                     summary = response.choices[0].message.content
 
                 except Exception:
-                    summary = "⚠️ Lỗi API (có thể do rate limit)"
+                    summary = "⚠️ Lỗi API"
 
                 st.write(summary)
 
@@ -81,15 +78,15 @@ if uploaded_file:
                 })
 
             # ====== BẢNG TỔNG ======
-            st.subheader("📋 Tổng hợp 14 chủ đề")
+            st.subheader("📋 Tổng hợp")
             result_df = pd.DataFrame(results)
             st.dataframe(result_df)
 
             # ====== DOWNLOAD ======
             csv = result_df.to_csv(index=False).encode('utf-8')
             st.download_button(
-                "📥 Tải kết quả",
+                "📥 Tải file kết quả",
                 csv,
-                "ket_qua_14_cluster.csv",
+                "ket_qua_cluster.csv",
                 "text/csv"
             )
