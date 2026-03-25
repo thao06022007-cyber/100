@@ -2,15 +2,14 @@ import streamlit as st
 import pandas as pd
 from openai import OpenAI
 
-# ====== CONFIG GROQ ======
+# ====== GROQ ======
 client = OpenAI(
     api_key=st.secrets["GROQ_API_KEY"],
     base_url="https://api.groq.com/openai/v1"
 )
 
-st.title("📊 AI Tóm tắt 14 chủ đề khảo sát")
+st.title("📊 AI Tóm tắt 14 Cluster")
 
-# ====== UPLOAD FILE ======
 uploaded_file = st.file_uploader("📂 Upload file Excel", type=["xlsx"])
 
 if uploaded_file:
@@ -19,62 +18,51 @@ if uploaded_file:
     st.write("📌 Dữ liệu:")
     st.dataframe(df.head())
 
-    # ====== CHỌN 14 CỘT ======
-    columns = st.multiselect("Chọn 14 cột chủ đề", df.columns)
+    # ====== CHỌN CỘT TEXT ======
+    text_column = st.selectbox("Chọn cột chứa nội dung", df.columns)
 
     if st.button("🚀 Phân tích"):
+        with st.spinner("Đang phân tích từng cluster..."):
 
-        if len(columns) == 0:
-            st.warning("⚠️ Bạn phải chọn ít nhất 1 cột")
-        else:
-            with st.spinner("Đang phân tích từng chủ đề..."):
+            results = []
 
-                results = []
+            # ====== LẤY DANH SÁCH CLUSTER ======
+            clusters = sorted(df["Cluster"].dropna().unique())
 
-                # ====== XỬ LÝ TỪNG CHỦ ĐỀ (KHÔNG GỘP) ======
-                for col in columns:
-                    texts = df[col].dropna().astype(str).tolist()
+            for cluster_id in clusters:
+                st.write(f"### 🔹 Cluster {cluster_id}")
 
-                    # giảm dữ liệu tránh rate limit
-                    sample = texts[:3]
+                cluster_texts = df[df["Cluster"] == cluster_id][text_column].astype(str).tolist()
 
-                    prompt = f"""
-                    Đây là câu trả lời khảo sát cho 1 chủ đề:
-                    {sample}
+                # giảm dữ liệu tránh rate limit
+                sample = cluster_texts[:3]
 
-                    Hãy tóm tắt ý nghĩa chính của chủ đề này trong 1-2 câu.
-                    Trả lời bằng tiếng Việt, ngắn gọn, dễ hiểu.
-                    """
+                prompt = f"""
+                Đây là các câu trả lời thuộc Cluster {cluster_id}:
+                {sample}
 
-                    try:
-                        response = client.chat.completions.create(
-                            model="llama-3.1-8b-instant",
-                            messages=[{"role": "user", "content": prompt}]
-                        )
+                Hãy tóm tắt ý nghĩa chung của cluster này trong 1-2 câu.
+                Viết bằng tiếng Việt, ngắn gọn.
+                """
 
-                        summary = response.choices[0].message.content
+                try:
+                    response = client.chat.completions.create(
+                        model="llama-3.1-8b-instant",
+                        messages=[{"role": "user", "content": prompt}]
+                    )
 
-                    except Exception as e:
-                        summary = "⚠️ Lỗi API (có thể do rate limit)"
+                    summary = response.choices[0].message.content
 
-                    results.append({
-                        "Chủ đề": col,
-                        "Tóm tắt": summary
-                    })
+                except Exception:
+                    summary = "⚠️ Lỗi API"
 
-                # ====== HIỂN THỊ ======
-                st.success("✅ Hoàn thành!")
+                st.write(summary)
 
-                result_df = pd.DataFrame(results)
+                results.append({
+                    "Cluster": cluster_id,
+                    "Tóm tắt": summary
+                })
 
-                st.subheader("🧠 Kết quả tóm tắt 14 chủ đề:")
-                st.dataframe(result_df)
-
-                # ====== DOWNLOAD FILE ======
-                csv = result_df.to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    "📥 Tải kết quả",
-                    csv,
-                    "ket_qua_tom_tat.csv",
-                    "text/csv"
-                )
+            # ====== BẢNG KẾT QUẢ ======
+            st.subheader("📋 Tổng hợp")
+            st.dataframe(pd.DataFrame(results))
