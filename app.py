@@ -56,4 +56,12 @@ if uploaded_file:
             )
 
             st.subheader("🧠 Kết quả tóm tắt:")
-            st.write(response.choices[0].message.content)
+result = response.choices[0].message.content
+
+for i, col in enumerate(columns):
+    st.write(f"### 🔹 {col}")
+    
+    try:
+        st.write(result.split(f"Chủ đề {i+1}:")[1].split("Chủ đề")[0])
+    except:
+        st.write("⚠️ Không tách được nội dung")
