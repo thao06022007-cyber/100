@@ -8,28 +8,26 @@ client = OpenAI(
     base_url="https://api.groq.com/openai/v1"
 )
 
-st.title("📊 Tóm tắt 14 Cluster (Survey)")
+st.title("📊 Phân tích 14 Cluster (Chủ đề & Ý nghĩa)")
 
 uploaded_file = st.file_uploader("📂 Upload file Excel", type=["xlsx"])
 
 if uploaded_file:
     df = pd.read_excel(uploaded_file)
 
-    # ====== FIX CLUSTER (QUAN TRỌNG NHẤT) ======
+    # ====== FIX CLUSTER ======
     df["Cluster_num"] = df["Cluster"].str.extract(r'(\d+)').astype(int)
 
-    st.write("📌 Dữ liệu:")
     st.dataframe(df.head())
 
-    text_column = "Content"  # file của bạn là cột này
+    text_column = "Content"
 
     if st.button("🚀 Phân tích"):
 
-        with st.spinner("Đang tóm tắt..."):
+        results = []
 
-            results = []
+        with st.spinner("Đang phân tích chủ đề..."):
 
-            # ====== CHẠY 1 → 14 ======
             for cluster_id in range(1, 15):
 
                 st.write(f"### 🔹 Cluster {cluster_id}")
@@ -38,25 +36,22 @@ if uploaded_file:
 
                 if cluster_data.empty:
                     st.write("⚠️ Không có dữ liệu")
-                    results.append({
-                        "Cluster": cluster_id,
-                        "Ý nghĩa": "Không có dữ liệu"
-                    })
                     continue
 
                 texts = cluster_data[text_column].dropna().astype(str).tolist()
+                sample = texts[:5]
 
-                sample = texts[:3]
-
+                # 🔥 PROMPT CHUẨN TÁCH CHỦ ĐỀ + Ý NGHĨA
                 prompt = f"""
-                Đây là các câu trả lời survey thuộc Cluster {cluster_id}:
+                Đây là các câu trả lời khảo sát:
                 {sample}
 
-                Hãy tóm tắt ý nghĩa chủ đề chính của cluster này.
-                - 1-2 câu
-                - Ngắn gọn
-                - Rõ ràng
-                - Tiếng Việt
+                Hãy phân tích và trả lời CHÍNH XÁC theo format:
+
+                Chủ đề: (viết 3-6 từ, không dài)
+                Ý nghĩa: (1 câu giải thích)
+
+                Không viết thêm gì khác.
                 """
 
                 try:
@@ -65,28 +60,19 @@ if uploaded_file:
                         messages=[{"role": "user", "content": prompt}]
                     )
 
-                    summary = response.choices[0].message.content
+                    result = response.choices[0].message.content
 
                 except Exception:
-                    summary = "⚠️ Lỗi API"
+                    result = "⚠️ Lỗi API"
 
-                st.write(summary)
+                # ====== HIỂN THỊ ======
+                st.write(result)
 
                 results.append({
                     "Cluster": cluster_id,
-                    "Ý nghĩa": summary
+                    "Kết quả": result
                 })
 
-            # ====== BẢNG TỔNG ======
-            st.subheader("📋 Tổng hợp")
-            result_df = pd.DataFrame(results)
-            st.dataframe(result_df)
-
-            # ====== DOWNLOAD ======
-            csv = result_df.to_csv(index=False).encode('utf-8')
-            st.download_button(
-                "📥 Tải file kết quả",
-                csv,
-                "ket_qua_cluster.csv",
-                "text/csv"
-            )
+        # ====== BẢNG TỔNG ======
+        st.subheader("📋 Tổng hợp")
+        st.dataframe(pd.DataFrame(results))
