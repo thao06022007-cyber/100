@@ -1,18 +1,16 @@
 import streamlit as st
 import pandas as pd
-from sklearn.cluster import KMeans
-from sklearn.feature_extraction.text import TfidfVectorizer
 from openai import OpenAI
 
-# ====== CONFIG GROQ ======
+# ====== GROQ ======
 client = OpenAI(
     api_key=st.secrets["GROQ_API_KEY"],
     base_url="https://api.groq.com/openai/v1"
 )
 
-st.title("📊 AI Survey Cluster Summarizer")
+st.title("📊 AI Tóm tắt 14 chủ đề khảo sát")
 
-# ====== UPLOAD ======
+# ====== UPLOAD FILE ======
 uploaded_file = st.file_uploader("📂 Upload file Excel", type=["xlsx"])
 
 if uploaded_file:
@@ -21,46 +19,37 @@ if uploaded_file:
     st.write("📌 Dữ liệu:")
     st.dataframe(df.head())
 
-    # ====== CHỌN CỘT ======
-    text_column = st.selectbox("Chọn cột chứa câu trả lời", df.columns)
+    # ====== CHỌN CÁC CỘT CHỦ ĐỀ ======
+    columns = st.multiselect(
+        "Chọn các cột (14 chủ đề)",
+        df.columns
+    )
 
-    if st.button("🚀 Phân tích"):
-        with st.spinner("Đang xử lý..."):
+    if st.button("🚀 Phân tích") and columns:
+        with st.spinner("Đang phân tích..."):
 
-            texts = df[text_column].dropna().astype(str)
+            all_text = ""
 
-            # ====== VECTORIZE ======
-            vectorizer = TfidfVectorizer()
-            X = vectorizer.fit_transform(texts)
+            # ====== GỘP TEXT 14 CHỦ ĐỀ ======
+            for col in columns:
+                texts = df[col].dropna().astype(str).tolist()
+                sample = texts[:5]   # giảm để tránh rate limit
 
-            # ====== CLUSTER ======
-            k = st.slider("Số cluster", 2, 6, 3)
-            kmeans = KMeans(n_clusters=k, random_state=42)
-            labels = kmeans.fit_predict(X)
+                all_text += f"\nChủ đề: {col}\n{sample}\n"
 
-            df["Cluster"] = labels
-
-            st.success("✅ Đã phân cụm!")
-            st.dataframe(df)
-
-            # ====== GỘP TEXT (TRÁNH RATE LIMIT) ======
-            all_clusters_text = ""
-
-            for cluster_id in range(k):
-                cluster_texts = df[df["Cluster"] == cluster_id][text_column].tolist()
-                sample = cluster_texts[:3]
-
-                all_clusters_text += f"\nCluster {cluster_id}:\n{sample}\n"
-
-            # ====== AI TÓM TẮT (CHỈ 1 LẦN GỌI API) ======
+            # ====== PROMPT ======
             prompt = f"""
-            Dưới đây là các nhóm câu trả lời khảo sát:
+            Dưới đây là dữ liệu khảo sát theo từng chủ đề:
 
-            {all_clusters_text}
+            {all_text}
 
-            Hãy tóm tắt ý nghĩa từng cluster (mỗi cluster 1-2 câu, viết ngắn gọn).
+            Hãy:
+            - Tóm tắt ý nghĩa từng chủ đề
+            - Mỗi chủ đề 1-2 câu
+            - Viết rõ ràng, dễ hiểu, bằng tiếng Việt
             """
 
+            # ====== CALL API 1 LẦN ======
             response = client.chat.completions.create(
                 model="llama-3.1-8b-instant",
                 messages=[{"role": "user", "content": prompt}]
