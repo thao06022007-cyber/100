@@ -4,13 +4,16 @@ from sklearn.cluster import KMeans
 from sklearn.feature_extraction.text import TfidfVectorizer
 from openai import OpenAI
 
-# ====== SET API KEY ======
-client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
+# ====== CONFIG GROQ ======
+client = OpenAI(
+    api_key=st.secrets["GROQ_API_KEY"],
+    base_url="https://api.groq.com/openai/v1"
+)
 
 st.title("📊 AI Survey Cluster Summarizer")
 
-# ====== UPLOAD FILE ======
-uploaded_file = st.file_uploader("Upload file Excel", type=["xlsx"])
+# ====== UPLOAD ======
+uploaded_file = st.file_uploader("📂 Upload file Excel", type=["xlsx"])
 
 if uploaded_file:
     df = pd.read_excel(uploaded_file)
@@ -18,50 +21,50 @@ if uploaded_file:
     st.write("📌 Dữ liệu:")
     st.dataframe(df.head())
 
-    # ====== CHỌN CỘT TEXT ======
+    # ====== CHỌN CỘT ======
     text_column = st.selectbox("Chọn cột chứa câu trả lời", df.columns)
 
     if st.button("🚀 Phân tích"):
-        texts = df[text_column].dropna().astype(str)
+        with st.spinner("Đang xử lý..."):
 
-        # ====== VECTORIZE ======
-        vectorizer = TfidfVectorizer(stop_words='english')
-        X = vectorizer.fit_transform(texts)
+            texts = df[text_column].dropna().astype(str)
 
-        # ====== CLUSTER ======
-        k = st.slider("Số cluster", 2, 10, 3)
-        kmeans = KMeans(n_clusters=k, random_state=42)
-        labels = kmeans.fit_predict(X)
+            # ====== VECTORIZE ======
+            vectorizer = TfidfVectorizer()
+            X = vectorizer.fit_transform(texts)
 
-        df["Cluster"] = labels
+            # ====== CLUSTER ======
+            k = st.slider("Số cluster", 2, 6, 3)
+            kmeans = KMeans(n_clusters=k, random_state=42)
+            labels = kmeans.fit_predict(X)
 
-        st.success("✅ Đã phân cụm!")
+            df["Cluster"] = labels
 
-        # ====== HIỂN THỊ ======
-        st.dataframe(df)
+            st.success("✅ Đã phân cụm!")
+            st.dataframe(df)
 
-        # ====== TÓM TẮT BẰNG AI ======
-        st.subheader("🧠 Tóm tắt từng Cluster")
+            # ====== GỘP TEXT (TRÁNH RATE LIMIT) ======
+            all_clusters_text = ""
 
-        for cluster_id in range(k):
-            st.write(f"### 🔹 Cluster {cluster_id}")
+            for cluster_id in range(k):
+                cluster_texts = df[df["Cluster"] == cluster_id][text_column].tolist()
+                sample = cluster_texts[:3]
 
-            cluster_texts = df[df["Cluster"] == cluster_id][text_column].tolist()
+                all_clusters_text += f"\nCluster {cluster_id}:\n{sample}\n"
 
-            sample = cluster_texts[:20]  # tránh quá dài
-
+            # ====== AI TÓM TẮT (CHỈ 1 LẦN GỌI API) ======
             prompt = f"""
-            Dưới đây là các câu trả lời khảo sát:
-            {sample}
+            Dưới đây là các nhóm câu trả lời khảo sát:
 
-            Hãy tóm tắt ý nghĩa chung của nhóm này bằng 1-2 câu ngắn.
+            {all_clusters_text}
+
+            Hãy tóm tắt ý nghĩa từng cluster (mỗi cluster 1-2 câu, viết ngắn gọn).
             """
 
             response = client.chat.completions.create(
-                model="gpt-4.1-mini",
+                model="llama-3.1-8b-instant",
                 messages=[{"role": "user", "content": prompt}]
             )
 
-            summary = response.choices[0].message.content
-
-            st.write("👉 Tóm tắt:", summary)
+            st.subheader("🧠 Kết quả tóm tắt:")
+            st.write(response.choices[0].message.content)
