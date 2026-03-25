@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 from openai import OpenAI
 
-# ====== GROQ ======
+# ====== CONFIG GROQ ======
 client = OpenAI(
     api_key=st.secrets["GROQ_API_KEY"],
     base_url="https://api.groq.com/openai/v1"
@@ -19,49 +19,62 @@ if uploaded_file:
     st.write("📌 Dữ liệu:")
     st.dataframe(df.head())
 
-    # ====== CHỌN CÁC CỘT CHỦ ĐỀ ======
-    columns = st.multiselect(
-        "Chọn các cột (14 chủ đề)",
-        df.columns
-    )
+    # ====== CHỌN 14 CỘT ======
+    columns = st.multiselect("Chọn 14 cột chủ đề", df.columns)
 
-    if st.button("🚀 Phân tích") and columns:
-        with st.spinner("Đang phân tích..."):
+    if st.button("🚀 Phân tích"):
 
-            all_text = ""
+        if len(columns) == 0:
+            st.warning("⚠️ Bạn phải chọn ít nhất 1 cột")
+        else:
+            with st.spinner("Đang phân tích từng chủ đề..."):
 
-            # ====== GỘP TEXT 14 CHỦ ĐỀ ======
-            for col in columns:
-                texts = df[col].dropna().astype(str).tolist()
-                sample = texts[:5]   # giảm để tránh rate limit
+                results = []
 
-                all_text += f"\nChủ đề: {col}\n{sample}\n"
+                # ====== XỬ LÝ TỪNG CHỦ ĐỀ (KHÔNG GỘP) ======
+                for col in columns:
+                    texts = df[col].dropna().astype(str).tolist()
 
-            # ====== PROMPT ======
-            prompt = f"""
-            Dưới đây là dữ liệu khảo sát theo từng chủ đề:
+                    # giảm dữ liệu tránh rate limit
+                    sample = texts[:3]
 
-            {all_text}
+                    prompt = f"""
+                    Đây là câu trả lời khảo sát cho 1 chủ đề:
+                    {sample}
 
-            Hãy:
-            - Tóm tắt ý nghĩa từng chủ đề
-            - Mỗi chủ đề 1-2 câu
-            - Viết rõ ràng, dễ hiểu, bằng tiếng Việt
-            """
+                    Hãy tóm tắt ý nghĩa chính của chủ đề này trong 1-2 câu.
+                    Trả lời bằng tiếng Việt, ngắn gọn, dễ hiểu.
+                    """
 
-            # ====== CALL API 1 LẦN ======
-            response = client.chat.completions.create(
-                model="llama-3.1-8b-instant",
-                messages=[{"role": "user", "content": prompt}]
-            )
+                    try:
+                        response = client.chat.completions.create(
+                            model="llama-3.1-8b-instant",
+                            messages=[{"role": "user", "content": prompt}]
+                        )
 
-            st.subheader("🧠 Kết quả tóm tắt:")
-result = response.choices[0].message.content
+                        summary = response.choices[0].message.content
 
-for i, col in enumerate(columns):
-    st.write(f"### 🔹 {col}")
-    
-    try:
-        st.write(result.split(f"Chủ đề {i+1}:")[1].split("Chủ đề")[0])
-    except:
-        st.write("⚠️ Không tách được nội dung")
+                    except Exception as e:
+                        summary = "⚠️ Lỗi API (có thể do rate limit)"
+
+                    results.append({
+                        "Chủ đề": col,
+                        "Tóm tắt": summary
+                    })
+
+                # ====== HIỂN THỊ ======
+                st.success("✅ Hoàn thành!")
+
+                result_df = pd.DataFrame(results)
+
+                st.subheader("🧠 Kết quả tóm tắt 14 chủ đề:")
+                st.dataframe(result_df)
+
+                # ====== DOWNLOAD FILE ======
+                csv = result_df.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    "📥 Tải kết quả",
+                    csv,
+                    "ket_qua_tom_tat.csv",
+                    "text/csv"
+                )
